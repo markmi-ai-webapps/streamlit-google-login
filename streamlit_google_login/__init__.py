@@ -11,9 +11,11 @@ Drop-in Google OAuth login for internal Streamlit data apps.
 
 Reads client_id/client_secret/redirect_uri from st.secrets["auth"] by
 default (same [auth] convention Streamlit's own st.login() uses), or
-pass them explicitly. With no [auth] section configured at all, runs in
-dev mode: no login UI, returns a fixed dev identity so you can build the
-rest of the app before an OAuth client exists.
+pass them explicitly. There is no dev-mode fallback: calling this means
+you want a real login, and a missing/incomplete config raises rather
+than silently skipping authentication. An app that wants a no-login dev
+path should check its own config before calling require_login(), not
+rely on this library to guess that for it.
 
 CSRF state is bound to the browser via a real cookie (see cookies.py),
 not just a signed/timestamped token -- so a forwarded, not-yet-used
@@ -43,8 +45,7 @@ def logout():
 
 def _resolve_config(client_id, client_secret, redirect_uri):
     # st.secrets.get() raises StreamlitSecretNotFoundError -- not just a
-    # missing key -- when no secrets.toml exists at all, which is exactly
-    # the case dev mode needs to detect gracefully rather than crash on.
+    # missing key -- when no secrets.toml exists at all.
     try:
         auth = st.secrets.get("auth", {})
     except Exception:
@@ -52,8 +53,20 @@ def _resolve_config(client_id, client_secret, redirect_uri):
     client_id = client_id or auth.get("client_id")
     client_secret = client_secret or auth.get("client_secret")
     redirect_uri = redirect_uri or auth.get("redirect_uri")
-    if not (client_id and client_secret and redirect_uri):
-        return None
+
+    missing = [
+        name
+        for name, value in [("client_id", client_id), ("client_secret", client_secret), ("redirect_uri", redirect_uri)]
+        if not value
+    ]
+    if missing:
+        raise RuntimeError(
+            "streamlit_google_login.require_login(): missing OAuth config: "
+            + ", ".join(missing)
+            + ". Set st.secrets['auth'][...] or pass them as kwargs. There is no "
+            "dev-mode fallback here -- an app that wants one should check its own "
+            "config before calling require_login(), not rely on this raising."
+        )
     return client_id, client_secret, redirect_uri
 
 
@@ -88,19 +101,12 @@ def require_login(
     client_id=None,
     client_secret=None,
     redirect_uri=None,
-    dev_user_email="dev@example.com",
     prompt="select_account",
     login_prompt="Please log in with your Google account to continue.",
 ):
-    """Returns (email, credentials). credentials is None in dev mode."""
+    """Returns (email, credentials)."""
     scopes = scopes or DEFAULT_SCOPES
-    config = _resolve_config(client_id, client_secret, redirect_uri)
-
-    if config is None:
-        st.info("Running in DEV MODE: no [auth] secrets configured, skipping login.")
-        return dev_user_email, None
-
-    client_id, client_secret, redirect_uri = config
+    client_id, client_secret, redirect_uri = _resolve_config(client_id, client_secret, redirect_uri)
 
     if redirect_uri.startswith("http://"):
         os.environ.setdefault("OAUTHLIB_INSECURE_TRANSPORT", "1")
@@ -110,8 +116,14 @@ def require_login(
         return st.session_state[f"{_SESSION_PREFIX}email"], st.session_state[f"{_SESSION_PREFIX}credentials"]
 
     params = st.query_params
+    if "error" in params:
+        error = params.get("error")
+        st.query_params.clear()
+        st.error(f"Google sign-in was not completed ({error}). Please try logging in again.")
+        st.stop()
+
     if "code" in params:
-        cookies = read_cookies_with_retry(retry_key="oauth_state")
+        cookies = read_cookies_with_retry(retry_key="oauth_state", wait_for_key=_STATE_COOKIE_NAME)
         expected_state = cookies.get(_STATE_COOKIE_NAME)
 
         if not expected_state or params.get("state") != expected_state:
@@ -136,7 +148,7 @@ def require_login(
             st.stop()
 
         st.query_params.clear()
-        if allowed_domain and not email.endswith(f"@{allowed_domain}"):
+        if allowed_domain and not email.lower().endswith(f"@{allowed_domain.lower()}"):
             st.error(f"Access is restricted to @{allowed_domain} accounts. You're logged in as {email}.")
             st.stop()
 
@@ -149,7 +161,11 @@ def require_login(
         # Generated once per session, guarded by session_state: the
         # write below reports back through the component's value
         # channel, which triggers a rerun -- redoing this every rerun
-        # would regenerate a new state/cookie each time and loop.
+        # would regenerate a new state/cookie each time and loop. Note
+        # this cookie name is fixed, so two concurrent login attempts in
+        # the same browser (two tabs) will race and one will fail with
+        # "expired or tampered with" -- an inconvenience, not a security
+        # issue (it fails closed), and out of scope for this library.
         flow = _build_flow(client_id, client_secret, redirect_uri, scopes)
         auth_url, state = flow.authorization_url(include_granted_scopes="true", prompt=prompt)
         write_cookie(

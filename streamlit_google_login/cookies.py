@@ -42,15 +42,23 @@ def write_cookie(name, value, *, max_age, secure):
     )
 
 
-def read_cookies_with_retry(*, retry_key):
+def read_cookies_with_retry(*, retry_key, wait_for_key=None):
     """Returns the full browser cookie dict. May call st.rerun() up to
-    _MAX_RETRIES times if the component hasn't reported back yet."""
+    _MAX_RETRIES times if the component hasn't reported back yet.
+
+    An empty {} unambiguously means "hasn't reported yet". A non-empty
+    dict is ambiguous if you're waiting on one specific cookie among
+    others that may already be present -- pass wait_for_key so the
+    retry keeps going until that specific key shows up (or retries run
+    out), instead of stopping early on an incomplete-but-nonempty dict.
+    """
     attempts_key = f"_sgl_read_attempts_{retry_key}"
     st.session_state.setdefault(attempts_key, 0)
 
     cookies = _cookie_manager().get_all(key=f"_sgl_get_all_{retry_key}")
+    resolved = (wait_for_key in cookies) if wait_for_key is not None else bool(cookies)
 
-    if not cookies and st.session_state[attempts_key] < _MAX_RETRIES:
+    if not resolved and st.session_state[attempts_key] < _MAX_RETRIES:
         st.session_state[attempts_key] += 1
         time.sleep(_RETRY_DELAY_SECONDS)
         st.rerun()

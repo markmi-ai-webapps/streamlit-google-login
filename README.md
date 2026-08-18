@@ -23,9 +23,10 @@ st.button("Log out", on_click=logout)
 
 Reads `client_id` / `client_secret` / `redirect_uri` from `st.secrets["auth"]`
 by default (same `[auth]` convention Streamlit's own `st.login()` uses), or
-pass them explicitly as kwargs. With no `[auth]` section configured at all,
-`require_login()` skips the login UI and returns a fixed dev identity, so an
-app can be built and run before an OAuth client exists.
+pass them explicitly as kwargs. There's no dev-mode fallback: a missing or
+incomplete config raises rather than silently skipping login. An app that
+wants a no-login local/dev path should check its own config before calling
+`require_login()`, not rely on this library to guess that for it.
 
 ```toml
 # .streamlit/secrets.toml
