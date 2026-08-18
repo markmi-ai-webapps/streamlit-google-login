@@ -17,50 +17,50 @@ Two things came out of that investigation:
   retry a bounded number of times via st.rerun() rather than concluding
   absence from one fast attempt.
 """
+from __future__ import annotations
+
 import time
+from typing import TYPE_CHECKING
 
 import streamlit as st
 
-_MAX_RETRIES = 8
+if TYPE_CHECKING:
+    from extra_streamlit_components import CookieManager
+
+_MAX_RETRIES = 20
 _RETRY_DELAY_SECONDS = 0.2
 
 
-def _cookie_manager():
+def _cookie_manager() -> CookieManager:
     import extra_streamlit_components as stx
 
     return stx.CookieManager()
 
 
-def write_cookie(name, value, *, max_age, secure):
+def write_cookie(name: str, value: str, *, secure: bool) -> None:
     _cookie_manager().set(
         name,
         value,
         key=f"_sgl_set_{name}",
-        max_age=max_age,
+        max_age=600,  # seconds
         same_site="lax",
         secure=secure,
     )
 
 
-def read_cookies_with_retry(*, retry_key, wait_for_key=None):
-    """Returns the full browser cookie dict. May call st.rerun() up to
-    _MAX_RETRIES times if the component hasn't reported back yet.
-
-    An empty {} unambiguously means "hasn't reported yet". A non-empty
-    dict is ambiguous if you're waiting on one specific cookie among
-    others that may already be present -- pass wait_for_key so the
-    retry keeps going until that specific key shows up (or retries run
-    out), instead of stopping early on an incomplete-but-nonempty dict.
+def read_cookies_with_retry(wait_for_key: str) -> dict[str, str]:
+    """Returns the full browser cookie dict, retrying via st.rerun() up
+    to _MAX_RETRIES times until wait_for_key shows up in it, rather
+    than stopping on an incomplete-but-nonempty dict.
     """
-    attempts_key = f"_sgl_read_attempts_{retry_key}"
+    attempts_key = f"_sgl_read_attempts_{wait_for_key}"
     st.session_state.setdefault(attempts_key, 0)
 
-    cookies = _cookie_manager().get_all(key=f"_sgl_get_all_{retry_key}")
-    resolved = (wait_for_key in cookies) if wait_for_key is not None else bool(cookies)
+    cookies = _cookie_manager().get_all(key=f"_sgl_get_all_{wait_for_key}") or {}
 
-    if not resolved and st.session_state[attempts_key] < _MAX_RETRIES:
+    if wait_for_key not in cookies and st.session_state[attempts_key] < _MAX_RETRIES:
         st.session_state[attempts_key] += 1
         time.sleep(_RETRY_DELAY_SECONDS)
         st.rerun()
 
-    return cookies or {}
+    return cookies

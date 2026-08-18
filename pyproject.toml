@@ -7,8 +7,12 @@ dependencies = [
     "streamlit>=1.42.0",
     "extra-streamlit-components==0.1.81",
     "google-auth-oauthlib",
+    "oauthlib",
     "requests",
 ]
+
+[project.optional-dependencies]
+test = ["pytest", "pytest-cov"]
 
 [build-system]
 requires = ["setuptools>=61.0"]
@@ -16,3 +20,6 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["streamlit_google_login*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
