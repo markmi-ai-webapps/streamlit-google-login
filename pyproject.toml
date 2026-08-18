@@ -1,0 +1,18 @@
+[project]
+name = "streamlit-google-login"
+version = "0.1.0"
+description = "Drop-in Google OAuth login for internal Streamlit data apps, with CSRF state bound to a real cookie that survives Streamlit Community Cloud."
+requires-python = ">=3.9"
+dependencies = [
+    "streamlit>=1.42.0",
+    "extra-streamlit-components==0.1.81",
+    "google-auth-oauthlib",
+    "requests",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["streamlit_google_login*"]
