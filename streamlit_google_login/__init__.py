@@ -123,7 +123,8 @@ def _handle_oauth_callback(config: Config, scopes: list[str], allowed_domain: st
             timeout=10,
         )
         response.raise_for_status()
-    except (OAuth2Error, Warning, requests.exceptions.RequestException):
+    except (OAuth2Error, Warning, requests.exceptions.RequestException) as exc:
+        st.write(f"DEBUG exception: {exc!r}")  # temporary
         st.error("Login failed or the login link expired. Please try logging in again.")
         st.stop()
 
