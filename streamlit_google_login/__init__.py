@@ -143,23 +143,30 @@ def _handle_oauth_callback(config: Config, scopes: list[str], allowed_domain: st
 def _show_login_link(config: Config, scopes: list[str], prompt: str, login_prompt: str) -> None:
     st.write(login_prompt)
     if f"{_SESSION_PREFIX}pending_auth_url" not in st.session_state:
-        # Guarded by session_state so a rerun (triggered by the cookie
-        # write below) doesn't regenerate state/cookie and loop. Fixed
-        # cookie names mean two concurrent logins in one browser will
-        # race -- fails closed as "expired or tampered with", fine.
+        # Guarded by session_state so a rerun doesn't regenerate
+        # state/cookie and loop. Fixed cookie names mean two concurrent
+        # logins in one browser will race -- fails closed as "expired
+        # or tampered with", fine.
         flow = _build_flow(config, scopes, autogenerate_code_verifier=True)
         auth_url, state = flow.authorization_url(prompt=prompt)
         write_cookie(_STATE_COOKIE_NAME, state, secure=config.secure)
         write_cookie(_CODE_VERIFIER_COOKIE_NAME, flow.code_verifier, secure=config.secure)
-        # Confirm both writes actually landed in the browser before
-        # showing a clickable link -- write_cookie() is fire-and-forget,
-        # so without this a fast click can navigate away before the
-        # cookie is set, leaving a stale value (or none) to read back.
-        read_cookies_with_retry(_STATE_COOKIE_NAME, wait_for_value=state)
-        st.write(f"DEBUG state attempts={st.session_state.get('_sgl_read_attempts_' + _STATE_COOKIE_NAME, 0)}")  # temporary
-        read_cookies_with_retry(_CODE_VERIFIER_COOKIE_NAME, wait_for_value=flow.code_verifier)
-        st.write(f"DEBUG verifier attempts={st.session_state.get('_sgl_read_attempts_' + _CODE_VERIFIER_COOKIE_NAME, 0)}")  # temporary
         st.session_state[f"{_SESSION_PREFIX}pending_auth_url"] = auth_url
+        st.session_state[f"{_SESSION_PREFIX}pending_state"] = state
+        st.session_state[f"{_SESSION_PREFIX}pending_code_verifier"] = flow.code_verifier
+
+    # Confirm both writes actually landed in the browser before showing
+    # a clickable link -- write_cookie() is fire-and-forget, so without
+    # this a fast click can navigate away before the cookie is set,
+    # leaving a stale value (or none) to read back. Runs outside the
+    # guard above using the saved state/code_verifier, not freshly
+    # generated ones, so a retry checks against a fixed target instead
+    # of one that moves every time this block re-executes.
+    read_cookies_with_retry(_STATE_COOKIE_NAME, wait_for_value=st.session_state[f"{_SESSION_PREFIX}pending_state"])
+    read_cookies_with_retry(
+        _CODE_VERIFIER_COOKIE_NAME, wait_for_value=st.session_state[f"{_SESSION_PREFIX}pending_code_verifier"]
+    )
+
     st.link_button("Log in with Google", st.session_state[f"{_SESSION_PREFIX}pending_auth_url"])
     st.stop()
 

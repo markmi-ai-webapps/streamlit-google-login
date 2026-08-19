@@ -256,8 +256,15 @@ class TestShowLoginLink:
         streamlit.session_state["_sgl_pending_auth_url"] = (
             "https://accounts.google.com/existing"
         )
+        streamlit.session_state["_sgl_pending_state"] = "existing-state"
+        streamlit.session_state["_sgl_pending_code_verifier"] = "existing-verifier"
         build_flow = MagicMock()
         monkeypatch.setattr(sgl, "_build_flow", build_flow)
+        monkeypatch.setattr(
+            sgl,
+            "read_cookies_with_retry",
+            lambda key, wait_for_value=None: {key: wait_for_value},
+        )
 
         # Act / Assert
         with pytest.raises(Stopped):
@@ -265,6 +272,54 @@ class TestShowLoginLink:
                 make_config(), sgl._BASE_SCOPES, "select_account", "Please log in"
             )
         build_flow.assert_not_called()
+
+    def test_confirms_using_saved_target_not_freshly_generated_one(self, monkeypatch):
+        # Arrange
+        fake_flow = MagicMock()
+        fake_flow.authorization_url.return_value = ("https://accounts.google.com/auth", "fixed-state")
+        fake_flow.code_verifier = "fixed-verifier"
+        monkeypatch.setattr(sgl, "_build_flow", lambda *a, **kw: fake_flow)
+        monkeypatch.setattr(sgl, "write_cookie", MagicMock())
+        seen_targets = []
+
+        def fake_read(key, wait_for_value=None):
+            seen_targets.append(wait_for_value)
+            return {key: wait_for_value}
+
+        monkeypatch.setattr(sgl, "read_cookies_with_retry", fake_read)
+
+        # Act
+        with pytest.raises(Stopped):
+            sgl._show_login_link(make_config(), sgl._BASE_SCOPES, "select_account", "Please log in")
+
+        # Assert
+        assert seen_targets == ["fixed-state", "fixed-verifier"]
+
+    def test_does_not_rebuild_flow_when_confirmation_reruns(self, monkeypatch):
+        # Arrange
+        build_flow_calls = []
+
+        def fake_build_flow(*a, **kw):
+            build_flow_calls.append(1)
+            fake_flow = MagicMock()
+            fake_flow.authorization_url.return_value = ("https://accounts.google.com/auth", "state-1")
+            fake_flow.code_verifier = "verifier-1"
+            return fake_flow
+
+        monkeypatch.setattr(sgl, "_build_flow", fake_build_flow)
+        monkeypatch.setattr(sgl, "write_cookie", MagicMock())
+        monkeypatch.setattr(sgl, "read_cookies_with_retry", lambda key, wait_for_value=None: (_ for _ in ()).throw(Rerun))
+
+        # Act
+        with pytest.raises(Rerun):
+            sgl._show_login_link(make_config(), sgl._BASE_SCOPES, "select_account", "Please log in")
+        with pytest.raises(Rerun):
+            sgl._show_login_link(make_config(), sgl._BASE_SCOPES, "select_account", "Please log in")
+
+        # Assert
+        assert len(build_flow_calls) == 1
+        assert streamlit.session_state["_sgl_pending_state"] == "state-1"
+        assert streamlit.session_state["_sgl_pending_code_verifier"] == "verifier-1"
 
 
 class TestRequireLogin:
