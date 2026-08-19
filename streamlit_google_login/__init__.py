@@ -169,6 +169,13 @@ def require_login(
     if fetch_token() raises over a scope Google granted beyond what was
     requested, add it to `scopes` rather than suppressing the check.
     """
+    if f"{_SESSION_PREFIX}warmed_up" not in st.session_state:
+        # st.query_params can be empty on a session's first script run
+        # even when the URL has them (streamlit/streamlit#4345) --
+        # force one rerun before ever reading them for real.
+        st.session_state[f"{_SESSION_PREFIX}warmed_up"] = True
+        st.rerun()
+
     scopes = _BASE_SCOPES + [scope for scope in scopes if scope not in _BASE_SCOPES]
     config = Config.resolve(client_id, client_secret, redirect_uri)
     _reject_insecure_redirect_uri(config)
