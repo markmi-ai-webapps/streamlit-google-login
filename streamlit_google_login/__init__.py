@@ -98,11 +98,13 @@ def _handle_sign_in_error() -> None:
 def _handle_oauth_callback(config: Config, scopes: list[str], allowed_domain: str | None) -> None:
     code = st.query_params["code"]
     state = st.query_params.get("state")
-    st.query_params.clear()
 
     cookies = read_cookies_with_retry(_STATE_COOKIE_NAME)
     expected_state = cookies.get(_STATE_COOKIE_NAME)
     code_verifier = cookies.get(_CODE_VERIFIER_COOKIE_NAME)
+
+    # read_cookies_with_retry can run st.rerun() so only clear after.
+    st.query_params.clear()
 
     if not expected_state or state != expected_state or not code_verifier:
         st.error("Login request expired or was tampered with. Please try logging in again.")
@@ -142,7 +144,7 @@ def _show_login_link(config: Config, scopes: list[str], prompt: str, login_promp
         # cookie names mean two concurrent logins in one browser will
         # race -- fails closed as "expired or tampered with", fine.
         flow = _build_flow(config, scopes, autogenerate_code_verifier=True)
-        auth_url, state = flow.authorization_url(include_granted_scopes="true", prompt=prompt)
+        auth_url, state = flow.authorization_url(prompt=prompt)
         write_cookie(_STATE_COOKIE_NAME, state, secure=config.secure)
         write_cookie(_CODE_VERIFIER_COOKIE_NAME, flow.code_verifier, secure=config.secure)
         st.session_state[f"{_SESSION_PREFIX}pending_auth_url"] = auth_url
@@ -169,13 +171,6 @@ def require_login(
     if fetch_token() raises over a scope Google granted beyond what was
     requested, add it to `scopes` rather than suppressing the check.
     """
-    if f"{_SESSION_PREFIX}warmed_up" not in st.session_state:
-        # st.query_params can be empty on a session's first script run
-        # even when the URL has them (streamlit/streamlit#4345) --
-        # force one rerun before ever reading them for real.
-        st.session_state[f"{_SESSION_PREFIX}warmed_up"] = True
-        st.rerun()
-
     scopes = _BASE_SCOPES + [scope for scope in scopes if scope not in _BASE_SCOPES]
     config = Config.resolve(client_id, client_secret, redirect_uri)
     _reject_insecure_redirect_uri(config)

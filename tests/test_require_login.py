@@ -111,6 +111,20 @@ class TestHandleSignInError:
 
 
 class TestHandleOauthCallback:
+    def test_preserves_query_params_if_cookie_read_reruns(self, monkeypatch):
+        # Arrange
+        streamlit.query_params.update({"code": "auth-code", "state": "expected-state"})
+
+        def rerunning_read(key):
+            raise Rerun
+
+        monkeypatch.setattr(sgl, "read_cookies_with_retry", rerunning_read)
+
+        # Act / Assert
+        with pytest.raises(Rerun):
+            sgl._handle_oauth_callback(make_config(), sgl._BASE_SCOPES, None)
+        assert streamlit.query_params == {"code": "auth-code", "state": "expected-state"}
+
     def test_rejects_missing_cookie_state(self, monkeypatch):
         # Arrange
         streamlit.query_params.update({"code": "auth-code", "state": "expected-state"})
@@ -248,30 +262,7 @@ class TestShowLoginLink:
         build_flow.assert_not_called()
 
 
-class TestRequireLoginWarmUp:
-    def test_reruns_once_on_a_fresh_session_before_reading_query_params(self):
-        # Act / Assert
-        with pytest.raises(Rerun):
-            sgl.require_login([], client_id="id", client_secret="secret", redirect_uri="https://x.com/cb")
-        assert streamlit.session_state["_sgl_warmed_up"] is True
-
-    def test_does_not_rerun_again_once_warmed_up(self, monkeypatch):
-        # Arrange
-        streamlit.session_state["_sgl_warmed_up"] = True
-        handler = MagicMock(side_effect=Stopped)
-        monkeypatch.setattr(sgl, "_show_login_link", handler)
-
-        # Act / Assert
-        with pytest.raises(Stopped):
-            sgl.require_login([], client_id="id", client_secret="secret", redirect_uri="https://x.com/cb")
-        handler.assert_called_once()
-
-
 class TestRequireLogin:
-    @pytest.fixture(autouse=True)
-    def warmed_up(self):
-        streamlit.session_state["_sgl_warmed_up"] = True
-
     def test_returns_cached_session_without_touching_query_params(self):
         # Arrange
         streamlit.session_state["_sgl_email"] = "user@example.com"
