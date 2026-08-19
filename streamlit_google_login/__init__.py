@@ -19,7 +19,6 @@ though this is a confidential client, per RFC 9700 guidance.
 """
 from __future__ import annotations
 
-import html
 import os
 from typing import TYPE_CHECKING
 
@@ -38,12 +37,6 @@ _BASE_SCOPES = ["openid", "https://www.googleapis.com/auth/userinfo.email"]
 _STATE_COOKIE_NAME = "sgl_oauth_state"
 _CODE_VERIFIER_COOKIE_NAME = "sgl_oauth_code_verifier"
 _SESSION_PREFIX = "_sgl_"
-
-_LOGIN_LINK_STYLE = (
-    "display:inline-block;padding:0.5rem 1rem;"
-    "border:1px solid rgba(49,51,63,0.2);border-radius:0.5rem;"
-    "text-decoration:none;color:inherit;"
-)
 
 
 def logout() -> None:
@@ -110,6 +103,9 @@ def _handle_oauth_callback(config: Config, scopes: list[str], allowed_domain: st
     expected_state = cookies.get(_STATE_COOKIE_NAME)
     code_verifier = cookies.get(_CODE_VERIFIER_COOKIE_NAME)
 
+    attempts = st.session_state.get(f"_sgl_read_attempts_{_STATE_COOKIE_NAME}", 0)
+    st.write(f"DEBUG attempts={attempts} cookies_found={list(cookies.keys())}")  # temporary
+
     # read_cookies_with_retry can run st.rerun() so only clear after.
     st.query_params.clear()
 
@@ -155,14 +151,7 @@ def _show_login_link(config: Config, scopes: list[str], prompt: str, login_promp
         write_cookie(_STATE_COOKIE_NAME, state, secure=config.secure)
         write_cookie(_CODE_VERIFIER_COOKIE_NAME, flow.code_verifier, secure=config.secure)
         st.session_state[f"{_SESSION_PREFIX}pending_auth_url"] = auth_url
-
-    # st.link_button() hardcodes target="_blank" with no override,
-    # which would split the OAuth round trip across two tabs/sessions.
-    auth_url = html.escape(st.session_state[f"{_SESSION_PREFIX}pending_auth_url"])
-    st.markdown(
-        f'<a href="{auth_url}" target="_self" style="{_LOGIN_LINK_STYLE}">Log in with Google</a>',
-        unsafe_allow_html=True,
-    )
+    st.link_button("Log in with Google", st.session_state[f"{_SESSION_PREFIX}pending_auth_url"])
     st.stop()
 
 
