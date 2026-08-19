@@ -7,6 +7,28 @@ from conftest import Rerun
 from streamlit_google_login import cookies
 
 
+def test_cookie_manager_constructs_only_once_per_session(monkeypatch):
+    # Arrange
+    import extra_streamlit_components as stx
+
+    construction_count = 0
+
+    class FakeCookieManager:
+        def __init__(self, *args, **kwargs):
+            nonlocal construction_count
+            construction_count += 1
+
+    monkeypatch.setattr(stx, "CookieManager", FakeCookieManager)
+
+    # Act
+    first = cookies._cookie_manager()
+    second = cookies._cookie_manager()
+
+    # Assert
+    assert construction_count == 1
+    assert first is second
+
+
 def test_write_cookie_passes_expected_args(monkeypatch):
     # Arrange
     manager = MagicMock()

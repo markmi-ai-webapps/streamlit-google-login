@@ -24,12 +24,18 @@ if TYPE_CHECKING:
 
 _MAX_RETRIES = 20
 _RETRY_DELAY_SECONDS = 0.2
+_MANAGER_SESSION_KEY = "_sgl_cookie_manager"
 
 
 def _cookie_manager() -> CookieManager:
     import extra_streamlit_components as stx
 
-    return stx.CookieManager()
+    # CookieManager() always registers a component under the fixed key
+    # "init" -- constructing it twice in one run raises
+    # StreamlitDuplicateElementKey, so cache it per session instead.
+    if _MANAGER_SESSION_KEY not in st.session_state:
+        st.session_state[_MANAGER_SESSION_KEY] = stx.CookieManager()
+    return st.session_state[_MANAGER_SESSION_KEY]
 
 
 def write_cookie(name: str, value: str, *, secure: bool) -> None:
