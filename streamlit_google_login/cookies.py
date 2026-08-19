@@ -49,24 +49,17 @@ def write_cookie(name: str, value: str, *, secure: bool) -> None:
     )
 
 
-def read_cookies_with_retry(wait_for_key: str, wait_for_value: str | None = None) -> dict[str, str]:
+def read_cookies_with_retry(wait_for_key: str) -> dict[str, str]:
     """Returns the full browser cookie dict, retrying via st.rerun() up
     to _MAX_RETRIES times until wait_for_key shows up in it, rather
     than stopping on an incomplete-but-nonempty dict.
-
-    Pass wait_for_value to also wait for that specific value -- e.g.
-    confirming a just-written cookie actually landed, rather than
-    stopping as soon as a stale cookie from an earlier attempt (same
-    key, old value) satisfies a bare presence check.
     """
     attempts_key = f"_sgl_read_attempts_{wait_for_key}"
     st.session_state.setdefault(attempts_key, 0)
 
     cookies = _cookie_manager().get_all(key=f"_sgl_get_all_{wait_for_key}") or {}
-    st.session_state.setdefault(f"_sgl_history_{wait_for_key}", []).append(dict(cookies))  # temporary
-    resolved = wait_for_key in cookies and (wait_for_value is None or cookies[wait_for_key] == wait_for_value)
 
-    if not resolved and st.session_state[attempts_key] < _MAX_RETRIES:
+    if wait_for_key not in cookies and st.session_state[attempts_key] < _MAX_RETRIES:
         st.session_state[attempts_key] += 1
         time.sleep(_RETRY_DELAY_SECONDS)
         st.rerun()

@@ -20,6 +20,7 @@ though this is a confidential client, per RFC 9700 guidance.
 from __future__ import annotations
 
 import os
+import time
 from typing import TYPE_CHECKING
 
 import requests
@@ -37,6 +38,7 @@ _BASE_SCOPES = ["openid", "https://www.googleapis.com/auth/userinfo.email"]
 _STATE_COOKIE_NAME = "sgl_oauth_state"
 _CODE_VERIFIER_COOKIE_NAME = "sgl_oauth_code_verifier"
 _SESSION_PREFIX = "_sgl_"
+_COOKIE_WRITE_SETTLE_SECONDS = 3
 
 
 def logout() -> None:
@@ -103,9 +105,6 @@ def _handle_oauth_callback(config: Config, scopes: list[str], allowed_domain: st
     expected_state = cookies.get(_STATE_COOKIE_NAME)
     code_verifier = cookies.get(_CODE_VERIFIER_COOKIE_NAME)
 
-    attempts = st.session_state.get(f"_sgl_read_attempts_{_STATE_COOKIE_NAME}", 0)
-    st.write(f"DEBUG attempts={attempts} cookies_found={list(cookies.keys())}")  # temporary
-
     # read_cookies_with_retry can run st.rerun() so only clear after.
     st.query_params.clear()
 
@@ -123,8 +122,7 @@ def _handle_oauth_callback(config: Config, scopes: list[str], allowed_domain: st
             timeout=10,
         )
         response.raise_for_status()
-    except (OAuth2Error, Warning, requests.exceptions.RequestException) as exc:
-        st.write(f"DEBUG exception: {exc!r}")  # temporary
+    except (OAuth2Error, Warning, requests.exceptions.RequestException):
         st.error("Login failed or the login link expired. Please try logging in again.")
         st.stop()
 
@@ -151,24 +149,13 @@ def _show_login_link(config: Config, scopes: list[str], prompt: str, login_promp
         auth_url, state = flow.authorization_url(prompt=prompt)
         write_cookie(_STATE_COOKIE_NAME, state, secure=config.secure)
         write_cookie(_CODE_VERIFIER_COOKIE_NAME, flow.code_verifier, secure=config.secure)
+        # write_cookie() is fire-and-forget, and polling to confirm the
+        # write landed doesn't work here: the CookieManager component
+        # takes exactly one real snapshot of document.cookie and then
+        # keeps re-reporting it forever, never re-querying. A short
+        # fixed wait before the link is clickable is what actually works.
+        time.sleep(_COOKIE_WRITE_SETTLE_SECONDS)
         st.session_state[f"{_SESSION_PREFIX}pending_auth_url"] = auth_url
-        st.session_state[f"{_SESSION_PREFIX}pending_state"] = state
-        st.session_state[f"{_SESSION_PREFIX}pending_code_verifier"] = flow.code_verifier
-
-    # Confirm both writes actually landed in the browser before showing
-    # a clickable link -- write_cookie() is fire-and-forget, so without
-    # this a fast click can navigate away before the cookie is set,
-    # leaving a stale value (or none) to read back. Runs outside the
-    # guard above using the saved state/code_verifier, not freshly
-    # generated ones, so a retry checks against a fixed target instead
-    # of one that moves every time this block re-executes.
-    expected_state = st.session_state[f"{_SESSION_PREFIX}pending_state"]
-    state_cookies = read_cookies_with_retry(_STATE_COOKIE_NAME, wait_for_value=expected_state)
-    st.write(f"DEBUG state history: {st.session_state.get('_sgl_history_' + _STATE_COOKIE_NAME)}")  # temporary
-
-    expected_verifier = st.session_state[f"{_SESSION_PREFIX}pending_code_verifier"]
-    verifier_cookies = read_cookies_with_retry(_CODE_VERIFIER_COOKIE_NAME, wait_for_value=expected_verifier)
-    st.write(f"DEBUG verifier history: {st.session_state.get('_sgl_history_' + _CODE_VERIFIER_COOKIE_NAME)}")  # temporary
 
     st.link_button("Log in with Google", st.session_state[f"{_SESSION_PREFIX}pending_auth_url"])
     st.stop()
