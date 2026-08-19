@@ -162,12 +162,15 @@ def _show_login_link(config: Config, scopes: list[str], prompt: str, login_promp
     # guard above using the saved state/code_verifier, not freshly
     # generated ones, so a retry checks against a fixed target instead
     # of one that moves every time this block re-executes.
-    read_cookies_with_retry(_STATE_COOKIE_NAME, wait_for_value=st.session_state[f"{_SESSION_PREFIX}pending_state"])
-    st.write(f"DEBUG state attempts={st.session_state.get('_sgl_read_attempts_' + _STATE_COOKIE_NAME, 0)}")  # temporary
-    read_cookies_with_retry(
-        _CODE_VERIFIER_COOKIE_NAME, wait_for_value=st.session_state[f"{_SESSION_PREFIX}pending_code_verifier"]
-    )
-    st.write(f"DEBUG verifier attempts={st.session_state.get('_sgl_read_attempts_' + _CODE_VERIFIER_COOKIE_NAME, 0)}")  # temporary
+    expected_state = st.session_state[f"{_SESSION_PREFIX}pending_state"]
+    state_cookies = read_cookies_with_retry(_STATE_COOKIE_NAME, wait_for_value=expected_state)
+    st.write(f"DEBUG state expected={expected_state!r} got={state_cookies.get(_STATE_COOKIE_NAME)!r}")  # temporary
+
+    expected_verifier = st.session_state[f"{_SESSION_PREFIX}pending_code_verifier"]
+    verifier_cookies = read_cookies_with_retry(_CODE_VERIFIER_COOKIE_NAME, wait_for_value=expected_verifier)
+    st.write(
+        f"DEBUG verifier expected={expected_verifier!r} got={verifier_cookies.get(_CODE_VERIFIER_COOKIE_NAME)!r}"
+    )  # temporary
 
     st.link_button("Log in with Google", st.session_state[f"{_SESSION_PREFIX}pending_auth_url"])
     st.stop()
