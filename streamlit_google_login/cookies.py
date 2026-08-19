@@ -63,6 +63,7 @@ def read_cookies_with_retry(wait_for_key: str, wait_for_value: str | None = None
     st.session_state.setdefault(attempts_key, 0)
 
     cookies = _cookie_manager().get_all(key=f"_sgl_get_all_{wait_for_key}") or {}
+    st.session_state.setdefault(f"_sgl_history_{wait_for_key}", []).append(dict(cookies))  # temporary
     resolved = wait_for_key in cookies and (wait_for_value is None or cookies[wait_for_key] == wait_for_value)
 
     if not resolved and st.session_state[attempts_key] < _MAX_RETRIES:
