@@ -229,6 +229,11 @@ class TestShowLoginLink:
         monkeypatch.setattr(sgl, "_build_flow", lambda *a, **kw: fake_flow)
         write_cookie_mock = MagicMock()
         monkeypatch.setattr(sgl, "write_cookie", write_cookie_mock)
+        monkeypatch.setattr(
+            sgl,
+            "read_cookies_with_retry",
+            lambda key, wait_for_value=None: {key: wait_for_value},
+        )
 
         # Act / Assert
         with pytest.raises(Stopped):

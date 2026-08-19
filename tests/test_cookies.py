@@ -89,6 +89,31 @@ def test_read_cookies_with_retry_gives_up_after_max_retries(monkeypatch):
     assert result == {}
 
 
+def test_read_cookies_with_retry_retries_on_stale_value(monkeypatch):
+    # Arrange
+    manager = MagicMock()
+    manager.get_all.return_value = {"sgl_oauth_state": "stale-value"}
+    monkeypatch.setattr(cookies, "_cookie_manager", lambda: manager)
+    monkeypatch.setattr(cookies.time, "sleep", lambda seconds: None)
+
+    # Act / Assert
+    with pytest.raises(Rerun):
+        cookies.read_cookies_with_retry("sgl_oauth_state", wait_for_value="fresh-value")
+
+
+def test_read_cookies_with_retry_accepts_matching_value_immediately(monkeypatch):
+    # Arrange
+    manager = MagicMock()
+    manager.get_all.return_value = {"sgl_oauth_state": "fresh-value"}
+    monkeypatch.setattr(cookies, "_cookie_manager", lambda: manager)
+
+    # Act
+    result = cookies.read_cookies_with_retry("sgl_oauth_state", wait_for_value="fresh-value")
+
+    # Assert
+    assert result == {"sgl_oauth_state": "fresh-value"}
+
+
 def test_read_cookies_with_retry_treats_none_as_empty(monkeypatch):
     # Arrange
     manager = MagicMock()
