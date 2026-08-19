@@ -159,19 +159,19 @@ class TestHandleOauthCallback:
 
         # Act / Assert
         with pytest.raises(Stopped):
-            sgl._handle_oauth_callback(make_config(), sgl._BASE_SCOPES, "markmi.ai")
+            sgl._handle_oauth_callback(make_config(), sgl._BASE_SCOPES, "example.com")
         assert "_sgl_credentials" not in streamlit.session_state
 
     def test_allows_matching_domain(self, monkeypatch):
         # Arrange
         streamlit.query_params.update({"code": "auth-code", "state": "expected-state"})
         mock_cookies(monkeypatch)
-        mock_successful_flow(monkeypatch, email="user@markmi.ai")
+        mock_successful_flow(monkeypatch, email="user@example.com")
 
         # Act / Assert
         with pytest.raises(Rerun):
-            sgl._handle_oauth_callback(make_config(), sgl._BASE_SCOPES, "markmi.ai")
-        assert streamlit.session_state["_sgl_email"] == "user@markmi.ai"
+            sgl._handle_oauth_callback(make_config(), sgl._BASE_SCOPES, "example.com")
+        assert streamlit.session_state["_sgl_email"] == "user@example.com"
 
     def test_catches_oauth_errors(self, monkeypatch):
         # Arrange
@@ -331,7 +331,7 @@ class TestRequireLogin:
         with pytest.raises(Stopped):
             sgl.require_login(
                 [],
-                allowed_domain="markmi.ai",
+                allowed_domain="example.com",
                 client_id="id",
                 client_secret="secret",
                 redirect_uri="https://x.com/cb",
@@ -340,7 +340,7 @@ class TestRequireLogin:
         # Assert
         handler.assert_called_once()
         args, kwargs = handler.call_args
-        assert args[2] == "markmi.ai"
+        assert args[2] == "example.com"
 
     def test_shows_login_link_by_default(self, monkeypatch):
         # Arrange

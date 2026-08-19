@@ -3,7 +3,7 @@ Drop-in Google OAuth login for internal Streamlit data apps.
 
     from streamlit_google_login import require_login, logout
 
-    email, credentials = require_login(scopes=[], allowed_domain="markmi.ai")
+    email, credentials = require_login(scopes=[], allowed_domain="example.com")
     st.button("Log out", on_click=logout)
 
 scopes are additional scopes beyond identity; openid/userinfo.email are

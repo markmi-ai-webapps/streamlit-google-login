@@ -7,8 +7,8 @@ import streamlit as st
 from streamlit_google_login import require_login, logout
 
 email, credentials = require_login(
-    scopes=["openid", "https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/spreadsheets"],
-    allowed_domain="markmi.ai",
+    scopes=["https://www.googleapis.com/auth/spreadsheets"],
+    allowed_domain="example.com",
 )
 
 st.write(f"Logged in as {email}")
@@ -45,10 +45,9 @@ user's own permissions) have to hand-roll the OAuth flow -- this package is
 that flow, done once, so individual apps don't each reinvent it.
 
 CSRF state is bound to the browser via a real cookie, not just a signed
-token: a forwarded, not-yet-used callback URL can't be used to log in as
-whoever generated it. That's validated to actually work on Streamlit
-Community Cloud -- see `markmi-ai-webapps/streamlit-cookie-repro`. The
-key finding: read the cookie via `CookieManager.get_all()`, not
-`st.context.cookies` (Community Cloud's proxy drops app-set cookies before
-they reach your backend), and retry a few times -- `get_all()`'s async
-report-back can take close to a second in a fresh session.
+token, so a forwarded, not-yet-used callback URL can't be used to log in
+as whoever generated it. The cookie is read via `CookieManager.get_all()`
+rather than `st.context.cookies`, since Streamlit Community Cloud's proxy
+strips app-set cookies before they reach the backend. `get_all()` can take
+close to a second to report back in a fresh session, so reads retry a
+bounded number of times rather than treating an empty result as final.
